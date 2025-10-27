@@ -232,29 +232,17 @@ export default class PromptsRunner<A extends Answers> {
         of(question).pipe(
           concatMap((question) =>
             from(this.shouldRun(question)).pipe(
-              concatMap((result) => {
-                let ask = true;
-                let display = true;
-                if (typeof result === 'object') {
-                  display = result.display;
-                  ask = result.ask;
-                } else {
-                  ask = result;
+              concatMap(({ display, ask }) => {
+                if (ask) {
+                  return defer(() => from(this.fetchAnswer(question)));
                 }
-                if (ask || display) {
-                  return of({ question, ask });
+                if (display) {
+                  this.displaySkippedQuestion(question);
                 }
                 return EMPTY;
               }),
             ),
           ),
-          concatMap(({ question, ask }) => {
-            if (ask) {
-              return defer(() => from(this.fetchAnswer(question)));
-            }
-            this.displaySkippedQuestion(question);
-            return EMPTY;
-          }),
         ),
       ),
     );
@@ -420,14 +408,12 @@ export default class PromptsRunner<A extends Answers> {
     this.abortController.abort();
   };
 
-  private shouldRun = async (
-    question: Question<A>,
-  ): Promise<boolean | CustomWhenResult> => {
+  private shouldRun = async (question: Question<A>): Promise<CustomWhenResult> => {
     if (
       question.askAnswered !== true &&
       _.get(this.answers, question.name) !== undefined
     ) {
-      return false;
+      return { display: false, ask: false };
     }
 
     const { when } = question;
@@ -438,9 +424,11 @@ export default class PromptsRunner<A extends Answers> {
         const ask = shouldRun.ask;
         return { display, ask };
       }
-      return Boolean(shouldRun);
+      const ask = Boolean(shouldRun);
+      return { display: ask, ask };
     }
 
-    return when !== false;
+    const ask = when !== false;
+    return { display: ask, ask };
   };
 }
